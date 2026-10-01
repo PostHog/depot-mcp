@@ -1,4 +1,5 @@
 export const DEFAULT_DEPOT_API_URL = "https://api.depot.dev";
+export const DEFAULT_TIMEOUT_MS = 60_000;
 
 export class DepotApiError extends Error {
   constructor(
@@ -15,6 +16,7 @@ export interface DepotClientOptions {
   token: string;
   org?: string;
   baseUrl?: string;
+  timeoutMs?: number;
   fetch?: typeof fetch;
 }
 
@@ -23,12 +25,14 @@ export class DepotClient {
   private readonly token: string;
   private readonly org?: string;
   private readonly baseUrl: string;
+  private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
 
   constructor(options: DepotClientOptions) {
     this.token = options.token;
     this.org = options.org;
     this.baseUrl = (options.baseUrl ?? process.env.DEPOT_API_URL ?? DEFAULT_DEPOT_API_URL).replace(/\/+$/, "");
+    this.timeoutMs = options.timeoutMs ?? (Number(process.env.DEPOT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
     this.fetchImpl = options.fetch ?? fetch;
   }
 
@@ -42,13 +46,27 @@ export class DepotClient {
       headers["x-depot-org"] = this.org;
     }
 
-    const response = await this.fetchImpl(`${this.baseUrl}/${service}/${method}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
+    let response: Response;
+    let text: string;
+    try {
+      response = await this.fetchImpl(`${this.baseUrl}/${service}/${method}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+      text = await response.text();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "TimeoutError") {
+        throw new DepotApiError(
+          504,
+          "deadline_exceeded",
+          `Depot API ${service}/${method} timed out after ${this.timeoutMs / 1000}s. Narrow the request, for example with a shorter time range or a repository filter.`,
+        );
+      }
+      throw error;
+    }
 
-    const text = await response.text();
     if (!response.ok) {
       let code = "unknown";
       let message = text || response.statusText;

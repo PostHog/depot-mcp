@@ -33,6 +33,12 @@ function toTimeRange(startAt?: string, endAt?: string) {
   return startAt || endAt ? compact({ startAt, endAt }) : undefined;
 }
 
+export const GHA_JOBS_DEFAULT_WINDOW_HOURS = 24;
+
+function hoursAgo(hours: number, now = Date.now()): string {
+  return new Date(now - hours * 3_600_000).toISOString();
+}
+
 function enumValues(prefix: string, values: readonly string[] | undefined) {
   return values?.map((v) => `${prefix}_${v.toUpperCase()}`);
 }
@@ -82,7 +88,9 @@ export function registerTools(server: McpServer, client: DepotClient): void {
     "ci_get_run",
     {
       title: "Get Depot CI run",
-      description: "Get a Depot CI run with its workflows, jobs and attempts.",
+      description:
+        "Get the metadata and status of one Depot CI run. It does not include jobs or attempt IDs: " +
+        "use ci_diagnose_failure (targetType \"run\") or ci_get_workflow for those.",
       inputSchema: { runId: z.string() },
       annotations: READ_ONLY,
     },
@@ -220,7 +228,9 @@ export function registerTools(server: McpServer, client: DepotClient): void {
     {
       title: "List GitHub Actions jobs on Depot runners",
       description:
-        "List GitHub Actions jobs that ran on Depot runners. To find failures, set conclusions=[\"failure\"]. Default window is the last 30 days.",
+        "List GitHub Actions jobs that ran on Depot runners, newest first. To find failures, set conclusions=[\"failure\"] and repositories. " +
+        `With no startAt or endAt, the window is the last ${GHA_JOBS_DEFAULT_WINDOW_HOURS} hours, because wide windows can time out. ` +
+        "Set startAt to look further back (max 90 days).",
       inputSchema: {
         repositories: z.array(z.string()).optional().describe('Repositories in "owner/name" format; empty means all'),
         statuses: z.array(z.enum(GHA_JOB_STATUSES)).optional(),
@@ -243,7 +253,7 @@ export function registerTools(server: McpServer, client: DepotClient): void {
               ...rest,
               statuses: enumValues("GITHUB_ACTIONS_JOB_STATUS", statuses),
               conclusions: enumValues("GITHUB_ACTIONS_JOB_CONCLUSION", conclusions),
-              timeRange: toTimeRange(startAt, endAt),
+              timeRange: toTimeRange(startAt ?? (endAt ? undefined : hoursAgo(GHA_JOBS_DEFAULT_WINDOW_HOURS)), endAt),
             }),
           ),
         ),
@@ -389,7 +399,9 @@ export function registerTools(server: McpServer, client: DepotClient): void {
     "get_build_steps",
     {
       title: "Get Depot build steps",
-      description: "List the steps of a container build, with errors and cache state. Use a step digest with get_build_step_logs.",
+      description:
+        "List the steps of a container build, with errors and cache state. Use the digest of a step with hasLogs=true " +
+        "with get_build_step_logs. A step error is often enough to explain a failed build.",
       inputSchema: { projectId: z.string(), buildId: z.string(), pageSize: z.number().int().min(1).optional(), pageToken },
       annotations: READ_ONLY,
     },
@@ -400,7 +412,9 @@ export function registerTools(server: McpServer, client: DepotClient): void {
     "get_build_step_logs",
     {
       title: "Get Depot build step logs",
-      description: "Get the logs of one container build step. Returns the last `tail` matching lines.",
+      description:
+        "Get the logs of one container build step. Returns the last `tail` matching lines. " +
+        "Depot does not keep logs for every step: check hasLogs in get_build_steps first.",
       inputSchema: {
         projectId: z.string(),
         buildId: z.string(),
@@ -420,6 +434,11 @@ export function registerTools(server: McpServer, client: DepotClient): void {
           );
           return { entries: (page.logs ?? []).map((log) => ({ body: log.message ?? "" })), nextPageToken: page.nextPageToken };
         }, filter);
+        if (result.scannedLines === 0) {
+          return text(
+            `${result.text}\n\nDepot returned no log lines for this step. Check hasLogs and the error field for this step in get_build_steps.`,
+          );
+        }
         return text(result.text);
       }),
   );

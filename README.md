@@ -57,6 +57,7 @@ Typical flow to debug a failed Depot CI run:
 ## Known issues
 
 - `gha_search_logs` returns `500 internal` from Depot. A direct call to `api.depot.dev` gives the same error, so the fault is in the Depot API. Because of this, `gha_get_log_context` is not tested: it needs a `lineId` from `gha_search_logs`.
+- `get_build_step_logs` can return no lines, also for steps that ran for some seconds. The Depot API itself returns `{}` for these steps. Check `hasLogs` and `error` in `get_build_steps` first.
 
 ## Tokens
 

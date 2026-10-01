@@ -251,6 +251,22 @@ describe("MCP tools", () => {
     await client.close();
   });
 
+  it.each([
+    { name: "empty response", response: {} },
+    { name: "empty logs array", response: { logs: [] } },
+  ])("get_build_step_logs explains an $name", async ({ response }) => {
+    depotFetch.mockImplementation(async () => new Response(JSON.stringify(response), { status: 200 }));
+    const client = await connect();
+    const result = await client.callTool({
+      name: "get_build_step_logs",
+      arguments: { projectId: "p", buildId: "b", buildStepDigest: "sha256:x" },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect((result.content as { text: string }[])[0].text).toContain("Depot returned no log lines for this step");
+    await client.close();
+  });
+
   it("returns Depot API errors as tool errors", async () => {
     depotFetch.mockImplementation(
       async () => new Response(JSON.stringify({ code: "permission_denied", message: "token lacks access" }), { status: 403 }),

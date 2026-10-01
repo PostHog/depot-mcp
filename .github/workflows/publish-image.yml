@@ -52,7 +52,7 @@ jobs:
 
       - name: Image metadata and ordered release tag
         id: meta
-        uses: PostHog/shared-actions/container-image-metadata@2427cf9968667894226f164eab356d96ca930b22 # v1, shared-actions#51
+        uses: ./.github/actions/container-image-metadata
         with:
           images: ${{ env.IMAGE_REPOSITORY }}
           generate-ordered-release-tag: "true"
@@ -79,7 +79,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Publish ordered release alias
-        uses: PostHog/shared-actions/container-image-metadata@2427cf9968667894226f164eab356d96ca930b22 # v1, shared-actions#51
+        uses: ./.github/actions/container-image-metadata
         with:
           images: ${{ env.IMAGE_REPOSITORY }}
           publish-ordered-release-tag: "true"

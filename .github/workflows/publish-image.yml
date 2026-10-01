@@ -1,0 +1,87 @@
+name: Publish image
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: publish-image-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  IMAGE_REPOSITORY: 795637471508.dkr.ecr.us-east-1.amazonaws.com/posthog-depot-mcp
+
+jobs:
+  quality-gate:
+    name: Exact-commit quality gate
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  publish:
+    name: Build and push OCI image
+    if: github.ref == 'refs/heads/main'
+    needs: quality-gate
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7 # v6.0.0
+        with:
+          role-to-assume: arn:aws:iam::795637471508:role/github-depot-mcp-publish-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076 # v2.0.1
+
+      - name: Image metadata and ordered release tag
+        id: meta
+        uses: PostHog/shared-actions/container-image-metadata@2427cf9968667894226f164eab356d96ca930b22 # v1, shared-actions#51
+        with:
+          images: ${{ env.IMAGE_REPOSITORY }}
+          generate-ordered-release-tag: "true"
+
+      # The runner is arm64. QEMU builds the amd64 variant.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
+        with:
+          context: .
+          push: true
+          provenance: false
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Publish ordered release alias
+        uses: PostHog/shared-actions/container-image-metadata@2427cf9968667894226f164eab356d96ca930b22 # v1, shared-actions#51
+        with:
+          images: ${{ env.IMAGE_REPOSITORY }}
+          publish-ordered-release-tag: "true"
+          ordered-release-tag: ${{ steps.meta.outputs.ordered-release-tag }}
+          ordered-release-digest: ${{ steps.build.outputs.digest }}

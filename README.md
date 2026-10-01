@@ -15,7 +15,7 @@ Depot gives agents a CLI, but no MCP server. This server lets an agent read Depo
 | Tool | Depot RPC | Use |
 | --- | --- | --- |
 | `ci_list_runs` | `CIService/ListRuns` | Find runs by repo, status, PR, SHA or trigger |
-| `ci_get_run` | `CIService/GetRun` | A run with its workflows, jobs and attempts |
+| `ci_get_run` | `CIService/GetRun` | Metadata and status of one run (no jobs or attempts) |
 | `ci_list_workflows` | `CIService/ListWorkflows` | Find workflows |
 | `ci_get_workflow` | `CIService/GetWorkflow` | A workflow with its jobs |
 | `ci_diagnose_failure` | `CIService/GetFailureDiagnosis` | Why a run, workflow, job or attempt failed |
@@ -27,7 +27,7 @@ Depot gives agents a CLI, but no MCP server. This server lets an agent read Depo
 
 | Tool | Depot RPC | Use |
 | --- | --- | --- |
-| `gha_list_jobs` | `GithubActionsService/ListGithubActionsJobs` | Find jobs by repo, status, conclusion and time |
+| `gha_list_jobs` | `GithubActionsService/ListGithubActionsJobs` | Find jobs by repo, status, conclusion and time (default: last 24 hours) |
 | `gha_get_job` | `GithubActionsService/GetGithubActionsJob` | One job |
 | `gha_search_logs` | `GithubActionsService/SearchGithubActionsLogs` | Search log lines |
 | `gha_get_log_context` | `GithubActionsService/GetGithubActionsLogContext` | Lines around a search match |
@@ -49,6 +49,14 @@ Typical flow to debug a failed Depot CI run:
 1. `ci_list_runs` with `status: ["failed"]`, `repo` and `pr`.
 2. `ci_diagnose_failure` with `targetType: "run"` and the run ID.
 3. `ci_get_job_logs` with an attempt ID from the diagnosis. Add `stderrOnly` or `contains` to make the output smaller.
+
+`ci_get_run` does not return jobs or attempt IDs. Use `ci_diagnose_failure` or `ci_get_workflow` to get them.
+
+`gha_list_jobs` uses a 24-hour window when you do not set `startAt` or `endAt`. Depot's own default is 30 days, and that can time out on large organizations.
+
+## Known issues
+
+- `gha_search_logs` returns `500 internal` from Depot. A direct call to `api.depot.dev` gives the same error, so the fault is in the Depot API. Because of this, `gha_get_log_context` is not tested: it needs a `lineId` from `gha_search_logs`.
 
 ## Tokens
 
@@ -78,6 +86,7 @@ Environment variables:
 | `PORT` | `3000` | HTTP port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `DEPOT_API_URL` | `https://api.depot.dev` | Depot API base URL |
+| `DEPOT_TIMEOUT_MS` | `60000` | Timeout for each Depot API call |
 
 `GET /healthz` returns `{"status":"ok"}`.
 
@@ -100,6 +109,7 @@ Any other MCP client that supports Streamable HTTP and custom headers works the 
 pnpm dev          # run with reload
 pnpm test         # vitest
 pnpm typecheck
+pnpm smoke PostHog/posthog   # call the tools on a running server with DEPOT_TOKEN from .env
 ```
 
 The server calls Depot's Connect RPC API with plain JSON over `fetch`. Request field names come from Depot's protobuf definitions in [depot/proto](https://github.com/depot/proto) and [depot/cli](https://github.com/depot/cli/tree/main/proto/depot/ci/v1).

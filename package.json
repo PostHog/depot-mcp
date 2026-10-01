@@ -14,7 +14,8 @@
     "start": "node dist/main.js",
     "dev": "tsx watch src/main.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke": "tsx scripts/smoke.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",

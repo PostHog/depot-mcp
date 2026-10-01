@@ -273,6 +273,24 @@ describe("MCP tools", () => {
     await client.close();
   });
 
+  it.each([
+    { name: "no time range", args: {}, expected: { startAt: "2026-03-09T12:00:00.000Z" } },
+    { name: "only endAt", args: { endAt: "2026-03-01T00:00:00Z" }, expected: { endAt: "2026-03-01T00:00:00Z" } },
+    {
+      name: "explicit startAt",
+      args: { startAt: "2026-01-01T00:00:00Z" },
+      expected: { startAt: "2026-01-01T00:00:00Z" },
+    },
+  ])("gha_list_jobs time range with $name", async ({ args, expected }) => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-03-10T12:00:00Z"));
+    const client = await connect();
+    await client.callTool({ name: "gha_list_jobs", arguments: args });
+    vi.mocked(Date.now).mockRestore();
+
+    expect(lastDepotRequest().body.timeRange).toEqual(expected);
+    await client.close();
+  });
+
   it("does not send x-depot-org when the header is absent", async () => {
     const client = await connect();
     await client.callTool({ name: "list_projects", arguments: {} });

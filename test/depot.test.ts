@@ -71,6 +71,36 @@ describe("DepotClient.call", () => {
     expect(apiError.message).toContain("svc/Method");
   });
 
+  it("passes an abort signal to fetch", async () => {
+    const fetch = mockFetch(200, "{}");
+    await new DepotClient({ token: "t", fetch }).call("s", "m");
+    expect(fetch.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("maps a timeout to a deadline_exceeded DepotApiError", async () => {
+    const hangingFetch = vi.fn(
+      (_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        }),
+    );
+    const client = new DepotClient({ token: "t", timeoutMs: 20, fetch: hangingFetch });
+    const error = await client.call("svc", "Slow").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DepotApiError);
+    expect((error as DepotApiError).code).toBe("deadline_exceeded");
+    expect((error as DepotApiError).status).toBe(504);
+    expect((error as DepotApiError).message).toContain("svc/Slow timed out after 0.02s");
+  });
+
+  it("re-throws network errors that are not timeouts", async () => {
+    const failingFetch = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    const client = new DepotClient({ token: "t", fetch: failingFetch });
+    await expect(client.call("s", "m")).rejects.toThrow("fetch failed");
+  });
+
   it("uses DEPOT_API_URL when no baseUrl is given", async () => {
     vi.stubEnv("DEPOT_API_URL", "https://env.example.com");
     const fetch = mockFetch(200, "{}");

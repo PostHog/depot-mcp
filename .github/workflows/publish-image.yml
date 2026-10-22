@@ -14,7 +14,7 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
-  IMAGE_REPOSITORY: 795637471508.dkr.ecr.us-east-1.amazonaws.com/posthog-depot-mcp
+  IMAGE_REPOSITORY: 520209747622.dkr.ecr.us-east-1.amazonaws.com/posthog-depot-mcp
 
 jobs:
   quality-gate:
@@ -44,7 +44,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7 # v6.0.0
         with:
-          role-to-assume: arn:aws:iam::795637471508:role/github-depot-mcp-publish-role
+          role-to-assume: arn:aws:iam::520209747622:role/github-depot-mcp-publish-role
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Log in to Amazon ECR
